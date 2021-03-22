@@ -1,0 +1,175 @@
+#include <math.h>
+#include <assert.h>
+
+#include <vector>
+
+#include "FeedforwardNeuralNetwork.h"
+
+FeedforwardNeuralNetwork::FeedforwardNeuralNetwork(int numInputs, int numOutputs,
+    int numHiddenLayers, int numHiddenNeurons) {
+  // initialize the layer configuration (numbers of neurons for each layer) and
+  // all member vectors (weights, biases, weightedInputs, activations)
+  FeedforwardNeuralNetwork::initialize(numInputs, numOutputs, numHiddenLayers, numHiddenNeurons);
+}
+
+// returns vector of "activated" weighted inputs
+arma::vec FeedforwardNeuralNetwork::activationFunction(arma::vec input) {
+  return 1/(1+arma::exp(-input));
+}
+
+// returns vector of derivatives of the activation function evaluated on the weighted inputs
+arma::vec FeedforwardNeuralNetwork::activationFunctionPrime(arma::vec input) {
+  arma::vec ones(input.size(), arma::fill::ones);
+  // % stands for element-wise multiplication (c.f. armadillo docs)
+  return FeedforwardNeuralNetwork::activationFunction(input) % (ones - FeedforwardNeuralNetwork::activationFunction(input));
+}
+
+// Calculate all the weightedInputs and activations for each layer for a given input,
+// most importantly the ones for the last layer (output)
+void FeedforwardNeuralNetwork::feedForward(arma::vec& input) {
+  _activations[0] = input;
+
+  for(int i=0; i<_numLayers-1; i++) {
+    _weightedInputs[i] = _weights[i] * _activations[i] + _biases[i];
+    _activations[i+1] = FeedforwardNeuralNetwork::activationFunction(_weightedInputs[i]);
+  }
+}
+
+// Train the network with a given batchsize for the dataset comprised of images and labels (MNIST)
+void FeedforwardNeuralNetwork::train(Dataset dataset, int batchsize) {
+  std::vector<arma::vec> batchImages;
+  std::vector<uint8_t> batchLabels;
+  arma::vec randImage;
+  uint8_t randLabel;
+
+  // setup mini batch
+  for (int i=0; i<batchsize; i++) {
+    int randIdx = rand() % batchsize;
+    randImage = dataset._trainImages[randIdx];
+    randLabel = dataset._trainLabels[randIdx];
+    batchImages.push_back(randImage);
+    batchLabels.push_back(randLabel);
+  }
+
+  FeedforwardNeuralNetwork::feedForward(dataset._trainImages[0]); // temporary
+  FeedforwardNeuralNetwork::backpropagate(FeedforwardNeuralNetwork::getDesiredOutputVectorFromLabel(dataset._trainLabels[0]));
+}
+
+// Execute the backpropagation algorithm to obtain the gradients of the cost
+// function with respect to weights and biases
+void FeedforwardNeuralNetwork::backpropagate(arma::vec desiredOutput) {
+  const int N = _numLayers-2; // numLayers = 3 -> N = 1
+  std::vector<arma::vec> gradBiases;
+  std::vector<arma::mat> gradWeights;
+  gradBiases.resize(N+1);   // sets size and initializes all elements to zero
+  gradWeights.resize(N+1);  // sets size and initializes all elements to zero
+
+  // c.f. backpropagation algorithm
+  arma::vec diff = (_activations[N+1] - desiredOutput);
+  arma::vec gradBiasLastLayer = diff % activationFunctionPrime(_weightedInputs[N]);
+  gradBiases[N] = gradBiasLastLayer;
+  gradWeights[N] = _activations[N] * gradBiasLastLayer.t();
+
+  // recursively calculate the gradients of the weights and biases (c.f. backpropagation algorithm)
+  for(int i=0; i<_numLayers-2; i++) {
+    arma::vec tmpGradBias = (_weights[N-i].t() * gradBiases[N-i]) % activationFunctionPrime(_weightedInputs[N-1-i]);
+    arma::mat tmpGradWeights = _activations[N-1-i] * gradBiases[N-i].t();
+    gradBiases[N-1-i] = tmpGradBias;
+    gradWeights[N-1-i] = tmpGradWeights;
+  }
+  _gradBiases = gradBiases;
+  _gradWeights = gradWeights;
+}
+
+arma::vec FeedforwardNeuralNetwork::getDesiredOutputVectorFromLabel(uint8_t label) {
+  arma::vec res(10, arma::fill::zeros);
+  //assert(label > -1 && label < 10);
+  res[label] = 1.0;
+  return res;
+}
+
+arma::uword FeedforwardNeuralNetwork::getIndexMaxActivation() {
+  return _activations[_numLayers-1].index_max();
+}
+
+
+double FeedforwardNeuralNetwork::getCost(Dataset dataset) {
+  int numSamples = dataset._testLabels.size();
+  arma::vec diff(dataset._testLabels.size(), arma::fill::zeros);
+  double cost = 0.0;
+  double norm = 0;
+
+  // loop over data samples
+  for (int i=0; i<numSamples; i++) {
+    FeedforwardNeuralNetwork::feedForward(dataset._testImages[i]);
+    diff = FeedforwardNeuralNetwork::getDesiredOutputVectorFromLabel(dataset._testLabels[i]) - _activations[_numLayers-1];
+    norm = arma::norm(diff);
+    cost += norm*norm;
+  }
+  cost = 1/(2.0*numSamples) * cost;
+  return cost;
+}
+
+
+double FeedforwardNeuralNetwork::evaluate(Dataset dataset) {
+  int numSamples = dataset._testLabels.size();
+  arma::Col<uint8_t> diff(dataset._testLabels.size());
+
+  // loop over data samples
+  for (int i=0; i<numSamples; i++) {
+    FeedforwardNeuralNetwork::feedForward(dataset._testImages[i]);
+    diff[i] = (uint8_t)(FeedforwardNeuralNetwork::getIndexMaxActivation()) - dataset._testLabels[i];
+    // std::cout << "sample number " << i << " | currentResult: " << unsigned(getCurrentResult()) << ", label: " << unsigned(dataset._testLabels[i]) << std::endl << std::endl;
+  }
+  arma::uvec nonzeroDiffs = find(diff);
+  // std::cout << "numSamples = " << numSamples << std::endl;
+  // std::cout << "nonzeroDiffs.size() = " << nonzeroDiffs.size() << std::endl;
+
+  double recognitionRate = (numSamples - nonzeroDiffs.size()) * 1.0/numSamples;
+  return recognitionRate;
+}
+
+void FeedforwardNeuralNetwork::initialize(int numInputs, int numOutputs, int numHiddenLayers, int numHiddenNeurons) {
+  // setup vector with number of neurons in each layer
+  _layerconfig.push_back(numInputs);
+  for (int i=0; i<numHiddenLayers; i++) {
+    _layerconfig.push_back(numHiddenNeurons);
+  }
+  _layerconfig.push_back(numOutputs);
+
+  // total nbr of layers is nbr of hidden layers + input layer + output layer
+  _numLayers = numHiddenLayers + 2;
+
+  // prepare to initialize weights, biases, weightedInputs and activations vectors
+  arma::mat weights;
+  arma::vec biases;
+  arma::vec weightedInputs;
+  arma::vec activations;
+
+  // initialize first activations vector aka input
+  activations = arma::vec(_layerconfig[0], arma::fill::zeros);
+  _activations.push_back(activations);
+
+  // iterate over all layers
+  for(int i=0; i<_layerconfig.size()-1; i++) {
+    int numNeuronsInThisLayer = _layerconfig[i];
+    int numNeuronsInNextLayer = _layerconfig[i+1];
+
+    // normally distributed random weights connecting layer i with layer i+1
+    weights.randn(numNeuronsInNextLayer, numNeuronsInThisLayer);
+    _weights.push_back(weights);
+
+    // normally distributed random biases of layer i
+    biases.randn(numNeuronsInNextLayer);
+    _biases.push_back(biases);
+
+    // initialze all elements of _weightedInputs to zero
+    weightedInputs = arma::vec(numNeuronsInThisLayer, arma::fill::zeros);
+    _weightedInputs.push_back(weightedInputs);
+
+    // initialze all elements of _activations to zero
+    activations = arma::vec(numNeuronsInNextLayer, arma::fill::zeros);
+    _activations.push_back(activations);
+  }
+
+}
