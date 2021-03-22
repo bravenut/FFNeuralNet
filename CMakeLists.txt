@@ -19,6 +19,12 @@ find_package(BLAS REQUIRED)
 find_package(LAPACK REQUIRED)
 include_directories("${PROJECT_SOURCE_DIR}/external/armadillo-10.3.0/include")
 
+# Boost library
+find_package(Boost REQUIRED COMPONENTS
+        unit_test_framework
+        program_options)
+include_directories(${Boost_INCLUDE_DIRS})
+
 # include simple mnist reader
 find_package(MNIST PATHS external/mnist)
 if(NOT MNIST_FOUND)
