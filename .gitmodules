@@ -1,0 +1,3 @@
+[submodule "external/mnist"]
+	path = external/mnist
+	url = https://github.com/wichtounet/mnist/
