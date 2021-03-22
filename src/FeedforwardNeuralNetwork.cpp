@@ -30,13 +30,13 @@ void FeedforwardNeuralNetwork::train(const Dataset& dataset, const int batchsize
   for(int e=0; e<epochs; e++) {
     std::chrono::steady_clock::time_point timeBeginEpoch = std::chrono::steady_clock::now();
     // loop over all batches
-    for (int i=0; i<numBatches; i++) {
+    for (int i=0; i<numBatches; ++i) {
 
       // set gradients for the current batch to zero
       FeedforwardNeuralNetwork::zeroBatchGradients();
 
       // loop over current mini batch (images and labels)
-      for (int j=0; j<batchsize; j++) {
+      for (int j=0; j<batchsize; ++j) {
         do {
           // make sure to make a new randIdx which is not used yet
           randIdx = rand() % dataset._trainLabels.size();
@@ -49,7 +49,7 @@ void FeedforwardNeuralNetwork::train(const Dataset& dataset, const int batchsize
         FeedforwardNeuralNetwork::backpropagate(dataset._trainLabels[randIdx]);
 
         // calculate sum of gradients for each layer
-        for(int l=0; l<_numLayers-1; l++) {
+        for(int l=0; l<_numLayers-1; ++l) {
           _gradBiasesBatch[l] = _gradBiasesBatch[l] + _gradBiases[l];
           _gradWeightsBatch[l] = _gradWeightsBatch[l] + _gradWeights[l];
         }
@@ -58,7 +58,7 @@ void FeedforwardNeuralNetwork::train(const Dataset& dataset, const int batchsize
       } // loop over samples in one batch
 
       // calculate new weights and biases
-      for(int l=0; l<_numLayers-1; l++) {
+      for(int l=0; l<_numLayers-1; ++l) {
         _biases[l] = _biases[l] - eta/batchsize * _gradBiasesBatch[l];
         _weights[l] = _weights[l] - eta/batchsize * _gradWeightsBatch[l];
       }
@@ -80,7 +80,7 @@ void FeedforwardNeuralNetwork::train(const Dataset& dataset, const int batchsize
 void FeedforwardNeuralNetwork::feedForward(const arma::vec& input) {
   _activations[0] = input;
 
-  for(int i=0; i<_numLayers-1; i++) {
+  for(int i=0; i<_numLayers-1; ++i) {
     _weightedInputs[i] = _weights[i] * _activations[i] + _biases[i];
     _activations[i+1] = FeedforwardNeuralNetwork::activationFunction(_weightedInputs[i]);
   }
@@ -99,7 +99,7 @@ void FeedforwardNeuralNetwork::backpropagate(const uint8_t& label) {
   _gradWeights[N] = gradBiasLastLayer * _activations[N].t();
 
   // recursively calculate the gradients of the weights and biases (c.f. backpropagation algorithm)
-  for(int i=0; i<N; i++) {
+  for(int i=0; i<N; ++i) {
     arma::vec tmpGradBias = (_weights[N-i].t() * _gradBiases[N-i]) % activationFunctionPrime(_weightedInputs[N-1-i]);
     _gradBiases[N-1-i] = tmpGradBias;
     _gradWeights[N-1-i] = tmpGradBias * _activations[N-1-i].t();
@@ -138,7 +138,7 @@ double FeedforwardNeuralNetwork::getCost(const Dataset& dataset) {
   double norm = 0.0;
 
   // loop over all data samples
-  for (int i=0; i<numSamples; i++) {
+  for (int i=0; i<numSamples; ++i) {
     // calculate output activation for given input image
     FeedforwardNeuralNetwork::feedForward(dataset._testImages[i]);
 
@@ -160,7 +160,7 @@ double FeedforwardNeuralNetwork::evaluate(const Dataset& dataset) {
   arma::Col<uint8_t> diff(dataset._testLabels.size());
 
   // loop over data samples
-  for (int i=0; i<numSamples; i++) {
+  for (int i=0; i<numSamples; ++i) {
     FeedforwardNeuralNetwork::feedForward(dataset._testImages[i]);
     diff[i] = (uint8_t)(FeedforwardNeuralNetwork::getIndexMaxActivation()) - dataset._testLabels[i];
   }
@@ -175,7 +175,7 @@ void FeedforwardNeuralNetwork::initialize(const int numInputs, const int numOutp
 {
   // setup vector with number of neurons in each layer
   _layerconfig.push_back(numInputs);
-  for (int i=0; i<numHiddenLayers; i++) {
+  for (int i=0; i<numHiddenLayers; ++i) {
     _layerconfig.push_back(numHiddenNeurons);
   }
   _layerconfig.push_back(numOutputs);
@@ -192,7 +192,7 @@ void FeedforwardNeuralNetwork::initialize(const int numInputs, const int numOutp
   _activations.push_back(activations);
 
   // iterate over all layers
-  for(int i=0; i<_layerconfig.size()-1; i++) {
+  for(int i=0; i<_layerconfig.size()-1; ++i) {
     const unsigned int numNeuronsInThisLayer = _layerconfig[i];
     const unsigned int numNeuronsInNextLayer = _layerconfig[i+1];
 
@@ -222,7 +222,7 @@ void FeedforwardNeuralNetwork::initialize(const int numInputs, const int numOutp
 
 inline void FeedforwardNeuralNetwork::zeroBatchGradients() {
   // iterate over all layers
-  for(int i=0; i<_layerconfig.size()-1; i++) {
+  for(int i=0; i<_layerconfig.size()-1; ++i) {
     const unsigned int numNeuronsInThisLayer = _layerconfig[i];
     const unsigned int numNeuronsInNextLayer = _layerconfig[i+1];
 
