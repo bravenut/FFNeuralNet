@@ -6,8 +6,9 @@
 #include "FeedforwardNeuralNetwork.h"
 
 FeedforwardNeuralNetwork::FeedforwardNeuralNetwork(const int numInputs, const int numOutputs,
-      const int numHiddenLayers, const int numHiddenNeurons) :
-  _numLayers(numHiddenLayers+2) {
+      const int numHiddenLayers, const int numHiddenNeurons, CostFunction* costFunction) :
+  _numLayers(numHiddenLayers+2),
+  _costFunction(costFunction) {
   // (total number of layers is number of hidden layers + input layer + output layer)
 
   // initialize the layer configuration (numbers of neurons for each layer) and
@@ -21,11 +22,13 @@ void FeedforwardNeuralNetwork::train(const Dataset& dataset, const int batchsize
   unsigned int numBatches = dataset._trainLabels.size() / batchsize;
   assert(dataset._trainLabels.size() % batchsize == 0);
 
-  std::cout << "Training network with a batch size of " << batchsize
-      << " (number of batches: " << numBatches << ")" << std::endl;
-
   std::vector<bool> sampleUsed(dataset._trainLabels.size(), false);
   unsigned int randIdx;
+
+//  std::cout << "Training network with a batch size of " << batchsize << 
+//    " (number of batches: " << numBatches << ")" << 
+//    " using cost function " << static_cast<std::underlying_type<CostFunction::CostFunctionType>::type>(_costFunction) << 
+//    "." << std::endl;
 
   for(int e=0; e<epochs; e++) {
     std::chrono::steady_clock::time_point timeBeginEpoch = std::chrono::steady_clock::now();
@@ -35,7 +38,7 @@ void FeedforwardNeuralNetwork::train(const Dataset& dataset, const int batchsize
       // set gradients for the current batch to zero
       FeedforwardNeuralNetwork::zeroBatchGradients();
 
-      // loop over current mini batch (images and labels)
+     // loop over current mini batch (images and labels)
       for (int j=0; j<batchsize; ++j) {
         do {
           // make sure to make a new randIdx which is not used yet
@@ -68,10 +71,23 @@ void FeedforwardNeuralNetwork::train(const Dataset& dataset, const int batchsize
 
     std::chrono::steady_clock::time_point timeEndEpoch = std::chrono::steady_clock::now();
 
+    // Evaluating the cost each epoch is very costly and should be removed at some point
+    double cost;
+    /*switch(_costFunction._costFunctionType) {
+        case CostFunction::QUADRATIC:
+            cost = FeedforwardNeuralNetwork::getQuadraticCost(dataset);
+        case CostFunction::CROSSENTROPY:
+            cost = FeedforwardNeuralNetwork::getCrossEntropyCost(dataset);
+    }
+    */
+    cost = FeedforwardNeuralNetwork::getCost(dataset);
+
+    // Calculate recognition rate after each epoch
     double recRate = FeedforwardNeuralNetwork::evaluate(dataset);
+
     std::cout << "\r|> Finished epoch " << e+1 << "/" << epochs
       << " (took " << std::chrono::duration_cast<std::chrono::milliseconds>(timeEndEpoch - timeBeginEpoch).count()
-      << " ms) | current recognition rate: " << std::setprecision(4) << recRate << std::flush;
+      << " ms) | current recognition rate: " << std::setprecision(4) << recRate << " | cost: " << cost << std::flush;
   } // loop over epochs
 }
 
@@ -86,14 +102,19 @@ void FeedforwardNeuralNetwork::feedForward(const arma::vec& input) {
   }
 }
 
-// Execute the backpropagation algorithm to obtain the gradients of the
-// cost function with respect to weights and biases
+// Execute the backpropagation algorithm for one data sample to obtain
+// the gradients of the cost function with respect to weights and biases
 void FeedforwardNeuralNetwork::backpropagate(const uint8_t& label) {
   const int N = _numLayers - 2;   // numLayers=3 -> N=1
 
-  // c.f. backpropagation algorithm
-  arma::vec gradBiasLastLayer = (_activations[N+1] - FeedforwardNeuralNetwork::getDesiredOutputVectorFromLabel(label))
-      % activationFunctionPrime(_weightedInputs[N]);
+  // c.f. backpropagation algorithm with quadratic/cross-entropy cost functions
+  arma::vec gradBiasLastLayer;
+//  switch(_costFunction.getCostFunctionType()) {
+//    case CostFunction::CostFunctionType::QUADRATIC:
+      gradBiasLastLayer = (_activations[N+1] - FeedforwardNeuralNetwork::getDesiredOutputVectorFromLabel(label)) % activationFunctionPrime(_weightedInputs[N]);
+//    case CostFunction::CostFunctionType::CROSSENTROPY:
+//      gradBiasLastLayer = (_activations[N+1] - FeedforwardNeuralNetwork::getDesiredOutputVectorFromLabel(label));
+//  }
 
   _gradBiases[N] = gradBiasLastLayer;
   _gradWeights[N] = gradBiasLastLayer * _activations[N].t();
@@ -129,13 +150,13 @@ inline const arma::uword FeedforwardNeuralNetwork::getIndexMaxActivation() const
   return _activations[_numLayers-1].index_max();
 }
 
-// evaluates cost function for the dataset
-double FeedforwardNeuralNetwork::getCost(const Dataset& dataset) {
+// evaluates the quadratic cost function for the dataset
+double FeedforwardNeuralNetwork::getQuadraticCost(const Dataset& dataset) {
   int numSamples = dataset._testLabels.size();
-  arma::vec desiredOutput(dataset._testLabels.size(), arma::fill::zeros);
-  arma::vec diff(dataset._testLabels.size(), arma::fill::zeros);
   double cost = 0.0;
   double norm = 0.0;
+  arma::vec desiredOutput;
+  arma::vec diff;
 
   // loop over all data samples
   for (int i=0; i<numSamples; ++i) {
@@ -152,6 +173,37 @@ double FeedforwardNeuralNetwork::getCost(const Dataset& dataset) {
   }
   cost = 1/(2.0*numSamples) * cost;
   return cost;
+}
+
+// evaluates the cross-entropy cost function for the dataset
+double FeedforwardNeuralNetwork::getCrossEntropyCost(const Dataset& dataset) {
+  int numSamples = dataset._testLabels.size();
+  arma::vec desiredOutput;
+  arma::vec ones(10, arma::fill::ones);
+
+  double cost = 0.0;
+
+  // loop over all data samples
+  for (int i=0; i<numSamples; ++i) {
+    // calculate output activation for given input image
+    FeedforwardNeuralNetwork::feedForward(dataset._testImages[i]);
+
+    // calculate the desiredOutput vector (desiredOuput[label] = 1 , zero otherwise)
+    desiredOutput = FeedforwardNeuralNetwork::getDesiredOutputVectorFromLabel(dataset._testLabels[i]);
+
+    // calculate the squared norm of the vector of differences of each neuron activation from the correct label (desiredOutput)
+    double ylna = arma::dot(desiredOutput, arma::log(_activations[_numLayers-1]));
+    double oneminusterm = arma::dot(ones-desiredOutput, arma::log(ones-_activations[_numLayers-1]));
+    cost = cost + ylna + oneminusterm;
+    //std::cout << "ylna and oneminusterm: " << ylna << " and " << oneminusterm << " (sum: " << (ylna+oneminusterm) << ")" << std::endl;
+    //std::cout << "current cost: " << cost << std::endl;
+  }
+  cost = -1.0/numSamples * cost;
+  return cost;
+}
+
+double FeedforwardNeuralNetwork::getCost(const Dataset& dataset) {
+    return _costFunction->getCost(dataset,this);
 }
 
 // calculates recognition rate of the network for the given dataset

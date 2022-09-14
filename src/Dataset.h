@@ -1,3 +1,6 @@
+#ifndef DATASET_H
+#define DATASET_H
+
 // Include mnist data reader
 #include "mnist/mnist_reader.hpp"
 
@@ -30,3 +33,5 @@ struct Dataset {
     std::vector<uint8_t> _testLabels;
 
 };
+
+#endif

@@ -1,0 +1,1 @@
+/usr/bin/c++   -Ofast -std=c++2a   CMakeFiles/test_FFNet.dir/main_test.cpp.o CMakeFiles/test_FFNet.dir/test_FFNet.cpp.o CMakeFiles/test_FFNet.dir/test_backprop.cpp.o CMakeFiles/test_FFNet.dir/test_backpropagation.cpp.o  -o test_FFNet  /usr/lib/x86_64-linux-gnu/libboost_unit_test_framework.so.1.71.0 /usr/lib/x86_64-linux-gnu/libboost_program_options.so.1.71.0 
